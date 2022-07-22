@@ -3,9 +3,9 @@
 
 
 Network Working Group                                          R. Robert
-Internet-Draft                                               27 May 2022
+Internet-Draft                                              22 July 2022
 Intended status: Informational                                          
-Expires: 28 November 2022
+Expires: 23 January 2023
 
 
              The Messaging Layer Security (MLS) Extensions
@@ -38,7 +38,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 28 November 2022.
+   This Internet-Draft will expire on 23 January 2023.
 
 Copyright Notice
 
@@ -60,20 +60,28 @@ Table of Contents
    2.  Extensions
      2.1.  AppAck
        2.1.1.  Description
+     2.2.  Targeted messages
+       2.2.1.  Description
+       2.2.2.  Format
+       2.2.3.  Encryption
+       2.2.4.  Authentication
+       2.2.5.  Guidance on authentication schemes
    3.  IANA Considerations
      3.1.  Extended MLS Extension types
      3.2.  Extended MLS Proposal types
-   4.  Normative References
+   4.  References
+     4.1.  Normative References
+     4.2.  Informative References
    Author's Address
 
 1.  Introduction
 
-   This document describes extensions to the Messaging Layer Security
-   (MLS) protocol that are not part of the main protocol specification.
-   The protocol specification includes a set of core extensions that are
-   likely to be useful to many applications.  The extensions described
-   in this document are intended to be used by applications that need to
-   extend the MLS protocol.
+   This document describes extensions to [mls-protocol] that are not
+   part of the main protocol specification.  The protocol specification
+   includes a set of core extensions that are likely to be useful to
+   many applications.  The extensions described in this document are
+   intended to be used by applications that need to extend the MLS
+   protocol.
 
 2.  Extensions
 
@@ -140,6 +148,170 @@ Table of Contents
    messages contain AppAcks.  The application can also have clients
    enforce an AppAck schedule, reporting loss if an AppAck is not
    received at the expected time.
+
+2.2.  Targeted messages
+
+2.2.1.  Description
+
+   MLS application messages make sending encrypted messages to all group
+   members easy and efficient.  Sometimes application protocols mandate
+   that messages are only sent to specific group members, either for
+   privacy or for efficiency reasons.
+
+   Targeted messages are a way to achieve this without having to create
+   a new group with the sender and the specific recipients - which might
+   not be possible or desired.  Instead, targeted messages define the
+   format and encryption of a message that is sent from a member of an
+   existing group to another member of that group.
+
+   The goal is to provide a one-shot messaging mechanism that provides
+   confidentiality and authentication.
+
+2.2.2.  Format
+
+   This extensions extens the MLS protocol to include a new message
+   type, TargetedMessage in WireFormat and MLSMessage:
+
+   enum {
+     ...
+     mls_targeted_message(6),
+     ...
+     (255)
+   } WireFormat;
+
+   struct {
+       ProtocolVersion version = mls10;
+       WireFormat wire_format;
+       select (MLSMessage.wire_format) {
+           ...
+           case mls_targeted_message:
+               TargetedMessage targeted_message;
+       }
+   } MLSMessage;
+
+   The TargetedMessage message type is defined as follows:
+
+   struct {
+     opaque group_id<V>;
+     uint64 epoch;
+     uint32 recipient_leaf_index;
+     opaque authenticated_data<V>;
+     opaque encrypted_sender_data<V>;
+     opaque encrypted_targeted_message_content<V>;
+   } TargetedMessage;
+
+   enum {
+     HPKEAuth,
+     Signature,
+   } TargetedMessageAuthScheme;
+
+   struct {
+     TargetedMessageAuthScheme authentication_scheme;
+     select (authentication_scheme) {
+       case HPKEAuth:
+         opaque mac<V>;
+       case Signature:
+         opaque signature<V>;
+     }
+     HPKECiphertext ciphertext;
+   } TargetedMessageContent;
+
+   struct {
+     opaque group_id<V>;
+     uint64 epoch;
+     uint32 recipient_leaf_index;
+     opaque authenticated_data<V>;
+     opaque encrypted_sender_data<V>;
+     TargetedMessageAuthScheme authentication_scheme;
+   } TargetedMessageTBM;
+
+   struct {
+     TargetedMessageTBM targeted_message_tbm;
+     HPKECiphertext hpke_ciphertext;
+   } TargetedMessageTBS;
+
+   struct {
+     opaque group_id<V>;
+     uint64 epoch;
+     opaque label<V> = "MLS 1.0 targeted message psk";
+   } PSKId;
+
+2.2.3.  Encryption
+
+   Targeted messages use HPKE to encrypt the message content between two
+   leaves.  The HPKE keys of the LeafNode are used to that effect,
+   namely the encryption_key field.
+
+   In addition, the sender data encryption from section 7.3.2
+   [mls-protocol] is used to encrypt MLSSenderData.
+   MLSSenderData.leaf_index is the leaf index of the sender.  The
+   MLSSenderData.generation field is not used and MUST be set to 0.
+
+2.2.4.  Authentication
+
+   For ciphersuites that support it, HPKE mode_auth_psk is used for
+   authentication.  For other ciphersuites, HPKE mode_psk is used along
+   with a signature.  The authentication scheme is indicated by the
+   authentication_scheme field in TargetedMessageContent.  See
+   Section 2.2.5 for more information.
+
+   For the PSK part of the authentication, clients export a dedicated
+   secret:
+
+   targeted_message_psk = MLS-Exporter("targeted message psk", "",
+   KDF.Nh)
+
+2.2.4.1.  Authentication with HPKE
+
+   The sender MUST set the authentication scheme to
+   TargetedMessageAuthScheme.HPKEAuth.
+
+   The sender then computes the following:
+
+   hpke_ciphertext = SealAuthPSK(receiver_node_public_key,
+   group_context, targeted_message_tbm, message, targeted_message_psk,
+   psk_id, sender_node_private_key)
+
+   The recipient computes the following:
+
+   message = OpenAuthPSK(hpke_ciphertext.enc, receiver_node_private_key,
+   group_context, targeted_message_tbm, hpke_ciphertext.ct,
+   targeted_message_psk, psk_id, sender_node_public_key)
+
+2.2.4.2.  Authentication with signatures
+
+   The sender MUST set the authentication scheme to
+   TargetedMessageAuthScheme.Signature.
+
+   The sender then computes the following:
+
+   ``` hpke_ciphertext = SealPSK(receiver_node_public_key,
+   group_context, targeted_message_tbm, message, targeted_message_psk,
+   epoch)
+
+   signature = SignWithLabel(., "targeted message",
+   targeted_message_tbs) ```
+
+   The recipient computes the following:
+
+   message = OpenPSK(hpke_ciphertext.enc, receiver_node_private_key,
+   group_context, targeted_message_tbm, hpke_ciphertext.ct,
+   targeted_message_psk, epoch)
+
+   The recipient MUST verify the message authentication:
+
+   VerifyWithLabel.verify(sender_leaf_node.signature_key, "targeted
+   message", targeted_message_tbs, signature)
+
+2.2.5.  Guidance on authentication schemes
+
+   If the group's ciphersuite does not support HPKE mode_auth_psk,
+   implementations MUST choose TargetedMessageAuthScheme.Signature.
+
+   If the group's ciphersuite does support HPKE mode_auth_psk,
+   implementations CAN choose TargetedMessageAuthScheme.HPKEAuth if
+   better efficiency and/or repudiability is desired.  Implementations
+   SHOULD consult [hpke-security-considerations] beforehand.
 
 3.  IANA Considerations
 
@@ -237,12 +409,28 @@ Table of Contents
 
                                  Table 2
 
-4.  Normative References
+4.  References
+
+4.1.  Normative References
 
    [RFC8126]  Cotton, M., Leiba, B., and T. Narten, "Guidelines for
               Writing an IANA Considerations Section in RFCs", BCP 26,
               RFC 8126, DOI 10.17487/RFC8126, June 2017,
               <https://www.rfc-editor.org/rfc/rfc8126>.
+
+4.2.  Informative References
+
+   [hpke-security-considerations]
+              "HPKE Security Considerations", n.d., <https://www.rfc-
+              editor.org/rfc/rfc9180.html#name-key-compromise-
+              impersonatio](https://www.rfc-editor.org/rfc/
+              rfc9180.html#name-key-compromise-impersonatio>.
+
+   [mls-protocol]
+              "The Messaging Layer Security (MLS) Protocol", n.d.,
+              <https://datatracker.ietf.org/doc/draft-ietf-mls-
+              protocol/](https://datatracker.ietf.org/doc/draft-ietf-
+              mls-protocol/>.
 
 Author's Address
 
