@@ -1,7 +1,7 @@
 {
   "magic": "E!vIA5L86J2I",
-  "timestamp": "2022-07-26T01:28:02.102727+00:00",
-  "repo": "raphaelrobert/mls-extensions",
+  "timestamp": "2022-07-28T01:23:30.753057+00:00",
+  "repo": "mlswg/mls-extensions",
   "labels": [
     {
       "name": "bug",
@@ -55,10 +55,10 @@
       "number": 1,
       "id": "PR_kwDOHZoI5M479E8G",
       "title": "Targeted messages draft",
-      "url": "https://github.com/raphaelrobert/mls-extensions/pull/1",
+      "url": "https://github.com/mlswg/mls-extensions/pull/1",
       "state": "OPEN",
       "author": "raphaelrobert",
-      "authorAssociation": "OWNER",
+      "authorAssociation": "MEMBER",
       "assignees": [
         "raphaelrobert"
       ],
@@ -66,10 +66,10 @@
       "body": "",
       "createdAt": "2022-07-22T14:36:35Z",
       "updatedAt": "2022-07-22T14:56:52Z",
-      "baseRepository": "raphaelrobert/mls-extensions",
+      "baseRepository": "mlswg/mls-extensions",
       "baseRefName": "main",
       "baseRefOid": "87eff2a22db8663171ceacdcf2edce2a01183f00",
-      "headRepository": "raphaelrobert/mls-extensions",
+      "headRepository": "mlswg/mls-extensions",
       "headRefName": "targeted-messages",
       "headRefOid": "14f55676ca0748d5a4013fde0bd1de13b8c6ea8d",
       "closedAt": null,
